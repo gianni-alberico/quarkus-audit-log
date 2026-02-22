@@ -23,6 +23,8 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     private final long startTime = System.nanoTime();
     private final String requestId = UUID.randomUUID().toString();
 
+    private boolean isPathExcluded = false;
+
     @Inject
     AuditLogConfig config;
 
@@ -35,8 +37,14 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
             return;
         }
 
-        String method = requestContext.getMethod();
         String path = requestContext.getUriInfo().getPath();
+
+        if (isPathExcluded(path)) {
+            isPathExcluded = true;
+            return;
+        }
+
+        String method = requestContext.getMethod();
         String body = readRequestBody(requestContext);
 
         LOGGER.info("[{}] Request {} {} {}", requestId, method, path, formatBody(body));
@@ -44,7 +52,7 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        if (!config.enabled()) {
+        if (!config.enabled() || isPathExcluded) {
             return;
         }
 
@@ -85,7 +93,7 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     }
 
     private String formatBody(String body) {
-        if(config.logBody() && isNonNullNonEmpty(body)) {
+        if (config.logBody() && isNonNullNonEmpty(body)) {
             return " body=" + body;
         }
 
@@ -94,5 +102,15 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
 
     private boolean isNonNullNonEmpty(String value) {
         return value != null && !value.isEmpty();
+    }
+
+    private boolean isPathExcluded(String path) {
+        for (String excludedPath : config.excludedPaths()) {
+            String regex = excludedPath.replace("*", ".*");
+            if(path.matches(regex)){
+                return true;
+            }
+        }
+        return false;
     }
 }
