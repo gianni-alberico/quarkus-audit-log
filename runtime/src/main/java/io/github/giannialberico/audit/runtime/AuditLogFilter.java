@@ -2,6 +2,8 @@ package io.github.giannialberico.audit.runtime;
 
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import jakarta.json.bind.Jsonb;
+import jakarta.json.bind.JsonbException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -9,6 +11,9 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @RequestScoped
@@ -21,32 +26,73 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     @Inject
     AuditLogConfig config;
 
+    @Inject
+    Jsonb jsonb;
+
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        if(!config.enabled()) {
+        if (!config.enabled()) {
             return;
         }
 
-        LOGGER.info("[{}] Request {} {}",
-                requestId,
-                requestContext.getMethod(),
-                requestContext.getUriInfo().getPath());
+        String method = requestContext.getMethod();
+        String path = requestContext.getUriInfo().getPath();
+        String body = readRequestBody(requestContext);
+
+        LOGGER.info("[{}] Request {} {} {}", requestId, method, path, formatBody(body));
     }
 
     @Override
-    public void filter(ContainerRequestContext requestContext,
-                       ContainerResponseContext responseContext) {
-        if(!config.enabled()) {
+    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+        if (!config.enabled()) {
             return;
         }
 
-        long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+        String method = requestContext.getMethod();
+        String path = requestContext.getUriInfo().getPath();
+        int status = responseContext.getStatus();
+        long durationMs  = (System.nanoTime() - startTime) / 1_000_000;
+        String body = readResponseBody(responseContext);
 
-        LOGGER.info("[{}] Response {} {} status={} duration={}ms",
-                requestId,
-                requestContext.getMethod(),
-                requestContext.getUriInfo().getPath(),
-                responseContext.getStatus(),
-                durationMs);
+        LOGGER.info("[{}] Response {} {} status={} duration={}ms {}",
+                requestId, method, path, status, durationMs, formatBody(body));
+    }
+
+    private String readRequestBody(ContainerRequestContext requestContext) {
+        if (!config.logBody()) {
+            return null;
+        }
+        try {
+            byte[] bytes = requestContext.getEntityStream().readAllBytes();
+            requestContext.setEntityStream(new ByteArrayInputStream(bytes));
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IOException | JsonbException e) {
+            LOGGER.warn("[{}] Failed to read request body", requestId, e);
+            return null;
+        }
+    }
+
+    private String readResponseBody(ContainerResponseContext responseContext) {
+        if (!config.logBody() || !responseContext.hasEntity()) {
+            return null;
+        }
+        try {
+            return jsonb.toJson(responseContext.getEntity());
+        } catch (JsonbException e) {
+            LOGGER.warn("[{}] Failed to read response body", requestId, e);
+            return null;
+        }
+    }
+
+    private String formatBody(String body) {
+        if(config.logBody() && isNonNullNonEmpty(body)) {
+            return " body=" + body;
+        }
+
+        return "";
+    }
+
+    private boolean isNonNullNonEmpty(String value) {
+        return value != null && !value.isEmpty();
     }
 }
