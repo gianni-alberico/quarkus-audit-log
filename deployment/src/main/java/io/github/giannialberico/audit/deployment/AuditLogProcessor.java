@@ -1,6 +1,8 @@
 package io.github.giannialberico.audit.deployment;
 
 import io.github.giannialberico.audit.runtime.AuditLogFilter;
+import io.github.giannialberico.audit.runtime.ExcludedPathsBean;
+import io.quarkus.arc.deployment.AdditionalBeanBuildItem;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.resteasy.reactive.spi.ContainerRequestFilterBuildItem;
@@ -27,5 +29,10 @@ class AuditLogProcessor {
         return new ContainerResponseFilterBuildItem.Builder(AuditLogFilter.class.getName())
                 .setRegisterAsBean(true)
                 .build();
+    }
+
+    @BuildStep
+    AdditionalBeanBuildItem registerBeans() {
+        return AdditionalBeanBuildItem.unremovableOf(ExcludedPathsBean.class);
     }
 }

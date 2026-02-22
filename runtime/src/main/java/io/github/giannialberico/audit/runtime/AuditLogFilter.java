@@ -15,6 +15,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @RequestScoped
 public class AuditLogFilter implements ContainerRequestFilter, ContainerResponseFilter {
@@ -29,6 +30,9 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     AuditLogConfig config;
 
     @Inject
+    ExcludedPathsBean  excludedPathsBean;
+
+    @Inject
     Jsonb jsonb;
 
     @Override
@@ -38,6 +42,10 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
         }
 
         String path = requestContext.getUriInfo().getPath();
+
+        if (excludedPathsChanged()) {
+            reloadExcludedPaths();
+        }
 
         if (isPathExcluded(path)) {
             isPathExcluded = true;
@@ -105,12 +113,25 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     }
 
     private boolean isPathExcluded(String path) {
-        for (String excludedPath : config.excludedPaths()) {
-            String regex = excludedPath.replace("*", ".*");
-            if(path.matches(regex)){
+        for (Pattern excludedPathRegex : excludedPathsBean.getExcludedPathsRegex()) {
+            if(excludedPathRegex.matcher(path).matches()){
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean excludedPathsChanged() {
+        return config.excludedPaths().hashCode() != excludedPathsBean.getExcludedPaths().hashCode();
+    }
+
+    private void reloadExcludedPaths() {
+        excludedPathsBean.setExcludedPaths(config.excludedPaths());
+        excludedPathsBean.setExcludedPathsRegex(
+                config.excludedPaths()
+                        .stream()
+                        .map(p -> Pattern.compile(p.replace("*", ".*")))
+                        .toList()
+        );
     }
 }
