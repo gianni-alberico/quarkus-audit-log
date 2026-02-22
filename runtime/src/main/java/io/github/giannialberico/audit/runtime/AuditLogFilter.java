@@ -1,6 +1,7 @@
 package io.github.giannialberico.audit.runtime;
 
 import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -17,8 +18,15 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     private final long startTime = System.nanoTime();
     private final String requestId = UUID.randomUUID().toString();
 
+    @Inject
+    AuditLogConfig config;
+
     @Override
     public void filter(ContainerRequestContext requestContext) {
+        if(!config.enabled()) {
+            return;
+        }
+
         LOGGER.info("[{}] Request {} {}",
                 requestId,
                 requestContext.getMethod(),
@@ -28,6 +36,9 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     @Override
     public void filter(ContainerRequestContext requestContext,
                        ContainerResponseContext responseContext) {
+        if(!config.enabled()) {
+            return;
+        }
 
         long durationMs = (System.nanoTime() - startTime) / 1_000_000;
 
