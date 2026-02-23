@@ -2,8 +2,6 @@ package io.github.giannialberico.audit.runtime;
 
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
-import jakarta.json.bind.Jsonb;
-import jakarta.json.bind.JsonbException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -33,7 +31,7 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
     ExcludedPathsBean  excludedPathsBean;
 
     @Inject
-    Jsonb jsonb;
+    Serializer serializer;
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
@@ -82,7 +80,7 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
             byte[] bytes = requestContext.getEntityStream().readAllBytes();
             requestContext.setEntityStream(new ByteArrayInputStream(bytes));
             return new String(bytes, StandardCharsets.UTF_8);
-        } catch (IOException | JsonbException e) {
+        } catch (IOException e) {
             LOGGER.warn("[{}] Failed to read request body", requestId, e);
             return null;
         }
@@ -92,12 +90,7 @@ public class AuditLogFilter implements ContainerRequestFilter, ContainerResponse
         if (!config.logBody() || !responseContext.hasEntity()) {
             return null;
         }
-        try {
-            return jsonb.toJson(responseContext.getEntity());
-        } catch (JsonbException e) {
-            LOGGER.warn("[{}] Failed to read response body", requestId, e);
-            return null;
-        }
+        return serializer.serialize(responseContext.getEntity());
     }
 
     private String formatBody(String body) {
